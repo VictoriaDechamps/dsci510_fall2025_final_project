@@ -1,1 +1,1 @@
-# dsci510_fall2025_finalproject
+# dsci510_fall2025_final_project
