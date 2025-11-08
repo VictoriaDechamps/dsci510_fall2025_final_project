@@ -1,6 +1,5 @@
-numpy
 pandas
-scikit-learn
-kaggle
-kagglehub
+requests
 python-dotenv
+beautifulsoup4
+lxml

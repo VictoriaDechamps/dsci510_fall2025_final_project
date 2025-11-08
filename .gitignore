@@ -1,6 +1,13 @@
-# Do NOT upload raw data or results
+# secrets
+.env
+
+# raw data & outputs
 data/
 results/
-# Environment and API keys
-.env
-kaggle.json
+
+# other
+.DS_Store
+
+# drafts/scratch
+src/still in progress/
+
