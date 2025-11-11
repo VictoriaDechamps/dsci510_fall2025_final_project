@@ -10,6 +10,7 @@ import time
 import base64
 import requests
 import pandas as pd
+import argparse
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -17,8 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-KWORB_CSV = DATA_DIR / "kworb_top_400.csv"
-OUT_CSV = DATA_DIR / "spotify_from_kworb_400.csv"
+DEFAULT_KWORB = DATA_DIR / "kworb_top_400.csv"
+DEFAULT_OUT = DATA_DIR / "spotify_from_kworb_400.csv"
 
 LIMIT = 400
 SLEEP_BETWEEN_CALLS = 0.12
@@ -80,14 +81,28 @@ def get_artist(artist_id: str, token: str) -> dict | None:
     resp.raise_for_status()
 
 def main():
-    if not KWORB_CSV.exists():
-        print(f"ERROR: {KWORB_CSV} not found")
+
+    parser = argparse.ArgumentParser(description="Pull Spotify metedata for Kworb songs")
+    parser.add_argument("--kworb", type=str, default=str(DEFAULT_KWORB),
+                        help="Path to input Kworb CSV (default: data/kworb_top_400.csv)")
+    parser.add_argument("--out", type=str, default=str(DEFAULT_OUT),
+                        help="Output CSV path (default: data/spotify_from_kworb_400.csv)")
+    parser.add_argument("--limit", type=int, default=400,
+                        help="Number of rows to process (default: 400)")
+    args = parser.parse_args()
+
+    kworb_csv = Path(args.kworb)
+    out_csv = Path(args.out)
+    limit = args.limit
+
+    if not kworb_csv.exists():
+        print(f"ERROR: {kworb_csv} not found")
         return
 
-    df = pd.read_csv(KWORB_CSV)
+    df = pd.read_csv(kworb_csv)
     for col in ["Artist", "Title"]:
         if col not in df.columns:
-            print(f"ERROR: Missing column '{col}' in {KWORB_CSV.name}")
+            print(f"ERROR: Missing column '{col}' in {kworb_csv.name}")
             return
 
     df["__order"] = range(len(df))
@@ -95,7 +110,7 @@ def main():
         df.dropna(subset=["Artist", "Title"])
           .drop_duplicates(subset=["Artist", "Title"], keep="first")
           .sort_values("__order")
-          .head(LIMIT)
+          .head(limit)
     )
 
     token = get_access_token()
@@ -103,8 +118,8 @@ def main():
 
     rows = []
     done_keys = set()
-    if OUT_CSV.exists():
-        existing = pd.read_csv(OUT_CSV)
+    if out_csv.exists():
+        existing = pd.read_csv(out_csv)
         rows = existing.to_dict("records")
         for r in rows:
             k = (normalize(r.get("kworb_title")), normalize(r.get("kworb_artist")))
@@ -128,7 +143,7 @@ def main():
         primary_id = primary.get("id")
 
         rec = {
-            "_jn_name":   normalize(item.get("name")),
+            "_jn_name": normalize(item.get("name")),
             "_jn_artist": normalize(primary.get("name")),
             "sp_track_id": item.get("id"),
             "name": item.get("name"),
@@ -147,20 +162,20 @@ def main():
         if GET_ARTIST_STATS and primary_id:
             a = get_artist(primary_id, token) or {}
             rec["primary_artist_id"] = primary_id
-            rec["artist_followers"]  = (a.get("followers") or {}).get("total")
+            rec["artist_followers"] = (a.get("followers") or {}).get("total")
             rec["artist_popularity"] = a.get("popularity")
-            rec["artist_genres"]     = ", ".join(a.get("genres", []) or [])
+            rec["artist_genres"] = ", ".join(a.get("genres", []) or [])
 
         rows.append(rec)
 
         if len(rows) % CHECKPOINT_EVERY == 0:
-            pd.DataFrame(rows).to_csv(OUT_CSV, index=False)
-            print(f"Checkpoint: saved {len(rows)} rows → {OUT_CSV}")
+            pd.DataFrame(rows).to_csv(out_csv, index=False)
+            print(f"Checkpoint: saved {len(rows)} rows → {out_csv}")
 
         time.sleep(SLEEP_BETWEEN_CALLS)
 
-    pd.DataFrame(rows).to_csv(OUT_CSV, index=False)
-    print(f"Done. Saved {len(rows)} rows → {OUT_CSV}")
+    pd.DataFrame(rows).to_csv(out_csv, index=False)
+    print(f"Done. Saved {len(rows)} rows → {out_csv}")
 
 if __name__ == "__main__":
     main()
