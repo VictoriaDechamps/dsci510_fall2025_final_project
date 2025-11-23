@@ -423,7 +423,51 @@ def explicit_pie_chart(data, results_dir):
     plt.close(fig)
     print("Saved pie chart →", output_path)
 
-# main
+def load_data_youtube():
+    root_folder = Path(__file__).resolve().parents[1]
+    data_dir = root_folder / "data"
+    results_dir = root_folder / "results"
+    make_folder(results_dir)
+    input_csv = data_dir / "spotify_kworb_kaggle1_kaggle2.csv"
+    if not input_csv.exists():
+        print("ERROR:", input_csv, "not found")
+        return None, data_dir, results_dir
+    data = pd.read_csv(input_csv)
+    return data, data_dir, results_dir
+
+def spotify_vs_youtube_streams(data, results_dir):
+    data.columns = data.columns.str.strip()
+    if "kworb_streams" not in data.columns:
+        print("Column 'kworb_streams' not found.")
+        return
+    if "Total Views" not in data.columns:
+        print("Column 'Total Views' not found.")
+        print("Columns available:", list(data.columns))
+        return
+    data["Total Views"] = (
+        data["Total Views"]
+        .astype(str)
+        .str.replace(",", "", regex=False))
+    data["Total Views"] = pd.to_numeric(data["Total Views"], errors="coerce")
+    data["kworb_streams"] = pd.to_numeric(data["kworb_streams"], errors="coerce")
+    clean = data[["kworb_streams", "Total Views"]].dropna()
+    if clean.empty:
+        print("No valid Spotify & YouTube rows")
+        return
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.scatter(clean["kworb_streams"], clean["Total Views"],
+               color=spotify_green)
+    ax.set_xlabel("Spotify Streams (Kworb)")
+    ax.set_ylabel("YouTube Total Views")
+    ax.set_title("Spotify Streams vs YouTube Views")
+
+    apply_spotify_style(ax)
+    plt.tight_layout()
+
+    out_path = results_dir / "spotify_vs_youtube_streams.png"
+    plt.savefig(out_path)
+    plt.close(fig)
+    print("Saved plot →", out_path)
 
 def main():
 
@@ -439,7 +483,10 @@ def main():
     duration_vs_streams(data, results_dir)
     correlation_heatmap(data, results_dir)
     explicit_pie_chart(data, results_dir)
-    print("Analysis complete.")
+    yt_data, yt_data_dir, yt_results_dir = load_data_youtube()
+    if yt_data is not None:
+        spotify_vs_youtube_streams(yt_data, results_dir)
+    print("Analysis complete :)")
     print("Plots in:", results_dir)
 
 

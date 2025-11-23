@@ -48,6 +48,7 @@ def main():
     run_merge()
     run_merge_youtube()
     run_analysis()
+
     print("Finished.")
     print("Data folder:", data_folder)
 
