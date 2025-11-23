@@ -1,181 +1,194 @@
 # src/pull_spotify_kworb400.py
-#       reads data/kworb_top_400.csv (columns: Artist, Title)
-#       gets a Spotify access token using client credentials from .env
-#       searches each song on Spotify and saves basic track metadata
-#       fetches artist followers/popularity/genres per song
-#       saves to data/spotify_from_kworb_400.csv
+# reads data/kworb_top_400.csv (columns: Artist, Title)
+# gets a Spotify access token using client credentials from .env
+# searches each song on Spotify and saves basic track metadata
+# fetches artist followers/popularity/genres per song
+# saves to data/spotify_from_kworb_400.csv
 
-import os
 import time
 import base64
 import requests
 import pandas as pd
 import argparse
 from pathlib import Path
-from dotenv import load_dotenv
+from src.config import (data_folder,kworb_output_filename,spotify_from_kworb_filename,sleep_between_calls,checkpoint_every,get_artist_stats,spotify_token_url,spotify_search_url,spotify_artists_url,spotify_client_id,spotify_client_secret,)
 
-ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+data_folder.mkdir(parents=True, exist_ok=True)
 
-DEFAULT_KWORB = DATA_DIR / "kworb_top_400.csv"
-DEFAULT_OUT = DATA_DIR / "spotify_from_kworb_400.csv"
+default_kworb_file = data_folder / kworb_output_filename
+default_out_file = data_folder / spotify_from_kworb_filename
 
-LIMIT = 400
-SLEEP_BETWEEN_CALLS = 0.12
-CHECKPOINT_EVERY = 50
-GET_ARTIST_STATS = True
+token_url = spotify_token_url
+search_url = spotify_search_url
+artists_url = spotify_artists_url
 
-TOKEN_URL = "https://accounts.spotify.com/api/token"
-SEARCH_URL = "https://api.spotify.com/v1/search"
-ARTISTS_URL = "https://api.spotify.com/v1/artists"
-
-load_dotenv(ROOT / ".env")
-CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
-CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+client_id = spotify_client_id
+client_secret = spotify_client_secret
 
 def get_access_token():
-    if not CLIENT_ID or not CLIENT_SECRET:
+    if not client_id or not client_secret:
         raise RuntimeError("Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET in .env")
-    auth = f"{CLIENT_ID}:{CLIENT_SECRET}".encode("utf-8")
-    b64 = base64.b64encode(auth).decode("utf-8")
-    r = requests.post(
-        TOKEN_URL,
-        headers={"Authorization": f"Basic {b64}"},
-        data={"grant_type": "client_credentials"},
-        timeout=30,
-    )
-    r.raise_for_status()
-    return r.json()["access_token"]
 
-def normalize(s: str) -> str:
-    return (s or "").strip().lower()
+    auth_string = f"{client_id}:{client_secret}".encode("utf-8")
+    base64_auth = base64.b64encode(auth_string).decode("utf-8")
 
-def search_track_first(query: str, token: str) -> dict | None:
-    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(token_url,headers={"Authorization": f"Basic {base64_auth}"},data={"grant_type": "client_credentials"},timeout=30,)
+    response.raise_for_status()
+    data = response.json()
+    return data["access_token"]
+
+def normalize_text(value):
+    if value:
+        return str(value).strip().lower()
+    else:
+        return ""
+
+
+def search_track_first(query, access_token):
+    headers = {"Authorization": f"Bearer {access_token}"}
     params = {"q": query, "type": "track", "limit": 1}
-    for attempt in range(3):
-        resp = requests.get(SEARCH_URL, headers=headers, params=params, timeout=30)
-        if resp.status_code == 429:
-            wait = int(resp.headers.get("Retry-After", "1"))
-            time.sleep(wait + 0.5)
-            continue
-        if 200 <= resp.status_code < 300:
-            items = resp.json().get("tracks", {}).get("items", [])
-            return items[0] if items else None
-        time.sleep(0.6 * (attempt + 1))
-    resp.raise_for_status()
 
-def get_artist(artist_id: str, token: str) -> dict | None:
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{ARTISTS_URL}/{artist_id}"
     for attempt in range(3):
-        resp = requests.get(url, headers=headers, timeout=30)
-        if resp.status_code == 429:
-            wait = int(resp.headers.get("Retry-After", "1"))
-            time.sleep(wait + 0.5)
+        response = requests.get(search_url,headers=headers,params=params,timeout=30,)
+
+        if response.status_code == 429:
+            wait_seconds = int(response.headers.get("Retry-After", "1"))
+            time.sleep(wait_seconds + 0.5)
             continue
-        if 200 <= resp.status_code < 300:
-            return resp.json()
+
+        if 200 <= response.status_code < 300:
+            data = response.json()
+            items = data.get("tracks", {}).get("items", [])
+            if items:
+                return items[0]
+            else:
+                return None
+
         time.sleep(0.6 * (attempt + 1))
-    resp.raise_for_status()
+
+    response.raise_for_status()
+
+
+def get_artist(artist_id, access_token):
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"{artists_url}/{artist_id}"
+
+    for attempt in range(3):
+        response = requests.get(url,headers=headers,timeout=30,)
+
+        if response.status_code == 429:
+            wait_seconds = int(response.headers.get("Retry-After", "1"))
+            time.sleep(wait_seconds + 0.5)
+            continue
+
+        if 200 <= response.status_code < 300:
+            return response.json()
+
+        time.sleep(0.6 * (attempt + 1))
+
+    response.raise_for_status()
+
 
 def main():
-
-    parser = argparse.ArgumentParser(description="Pull Spotify metedata for Kworb songs")
-    parser.add_argument("--kworb", type=str, default=str(DEFAULT_KWORB),
-                        help="Path to input Kworb CSV (default: data/kworb_top_400.csv)")
-    parser.add_argument("--out", type=str, default=str(DEFAULT_OUT),
-                        help="Output CSV path (default: data/spotify_from_kworb_400.csv)")
-    parser.add_argument("--limit", type=int, default=400,
-                        help="Number of rows to process (default: 400)")
+    parser = argparse.ArgumentParser(description="Pull Spotify metadata for Kworb songs")
+    parser.add_argument("--kworb",type=str,default=str(default_kworb_file),help="Path to input Kworb CSV (default: data/kworb_top_400.csv)",)
+    parser.add_argument("--out",type=str,default=str(default_out_file),help="Output CSV path (default: data/spotify_from_kworb_400.csv)",)
+    parser.add_argument("--limit",type=int,default=1000,help="Number of rows to process (default: 1000)",)
     args = parser.parse_args()
+    kworb_path = Path(args.kworb)
+    out_path = Path(args.out)
+    row_limit = args.limit
 
-    kworb_csv = Path(args.kworb)
-    out_csv = Path(args.out)
-    limit = args.limit
-
-    if not kworb_csv.exists():
-        print(f"ERROR: {kworb_csv} not found")
+    if not kworb_path.exists():
+        print("ERROR:", kworb_path, "not found")
         return
 
-    df = pd.read_csv(kworb_csv)
-    for col in ["Artist", "Title"]:
-        if col not in df.columns:
-            print(f"ERROR: Missing column '{col}' in {kworb_csv.name}")
+    kworb_df = pd.read_csv(kworb_path)
+
+    for column_name in ["Artist", "Title"]:
+        if column_name not in kworb_df.columns:
+            print("ERROR: Missing column",repr(column_name),"in",kworb_path.name,)
             return
 
-    df["__order"] = range(len(df))
-    df = (
-        df.dropna(subset=["Artist", "Title"])
-          .drop_duplicates(subset=["Artist", "Title"], keep="first")
-          .sort_values("__order")
-          .head(limit)
-    )
+    kworb_df["__order"] = range(len(kworb_df))
 
-    token = get_access_token()
-    print(f"Token acquired. Processing {len(df)} rows…")
+    kworb_df = (
+        kworb_df.dropna(subset=["Artist", "Title"])
+        .drop_duplicates(subset=["Artist", "Title"], keep="first")
+        .sort_values("__order")
+        .head(row_limit))
 
-    rows = []
+    print("Loaded", len(kworb_df), "Kworb rows to process")
+    access_token = get_access_token()
+    print("Token acquired")
+
+    all_rows = []
     done_keys = set()
-    if out_csv.exists():
-        existing = pd.read_csv(out_csv)
-        rows = existing.to_dict("records")
-        for r in rows:
-            k = (normalize(r.get("kworb_title")), normalize(r.get("kworb_artist")))
-            done_keys.add(k)
-        print(f"Resuming from {len(rows)} already-saved rows…")
 
-    for i, row in df.iterrows():
-        title = str(row["Title"])
-        artist = str(row["Artist"])
-        key = (normalize(title), normalize(artist))
+    if out_path.exists():
+        existing_df = pd.read_csv(out_path)
+        all_rows = existing_df.to_dict("records")
+        for existing_row in all_rows:
+            key = (
+                normalize_text(existing_row.get("kworb_title")),
+                normalize_text(existing_row.get("kworb_artist")))
+            done_keys.add(key)
+        print("Resuming from", len(all_rows), "already saved rows...")
+
+    for i, kworb_row in kworb_df.iterrows():
+        kworb_title = str(kworb_row["Title"])
+        kworb_artist = str(kworb_row["Artist"])
+
+        key = (normalize_text(kworb_title), normalize_text(kworb_artist))
         if key in done_keys:
             continue
 
-        item = search_track_first(f"{title} {artist}", token)
-        if not item:
-            print(f"Not found: {title} — {artist}")
-            time.sleep(SLEEP_BETWEEN_CALLS)
+        search_query = f"{kworb_title} {kworb_artist}"
+        track_data = search_track_first(search_query, access_token)
+
+        if not track_data:
+            time.sleep(sleep_between_calls)
             continue
 
-        primary = item["artists"][0]
-        primary_id = primary.get("id")
+        primary_artist = track_data["artists"][0]
+        primary_artist_id = primary_artist.get("id")
 
-        rec = {
-            "_jn_name": normalize(item.get("name")),
-            "_jn_artist": normalize(primary.get("name")),
-            "sp_track_id": item.get("id"),
-            "name": item.get("name"),
-            "artist_names": ", ".join(a.get("name","") for a in item.get("artists", [])),
-            "album_name": item.get("album", {}).get("name"),
-            "release_date": item.get("album", {}).get("release_date"),
-            "explicit": item.get("explicit"),
-            "duration_ms": item.get("duration_ms"),
-            "popularity": item.get("popularity"),
-            "kworb_title": title,
-            "kworb_artist": artist,
-            "kworb_streams": row.get("Streams"),
-            "kworb_daily_streams": row.get("Daily [streams]"),
-        }
+        record = {
+            "_jn_name": normalize_text(track_data.get("name")),
+            "_jn_artist": normalize_text(primary_artist.get("name")),
+            "sp_track_id": track_data.get("id"),
+            "name": track_data.get("name"),
+            "artist_names": ", ".join(a.get("name", "") for a in track_data.get("artists", [])),
+            "album_name": track_data.get("album", {}).get("name"),
+            "release_date": track_data.get("album", {}).get("release_date"),
+            "explicit": track_data.get("explicit"),
+            "duration_ms": track_data.get("duration_ms"),
+            "popularity": track_data.get("popularity"),
+            "kworb_title": kworb_title,
+            "kworb_artist": kworb_artist,
+            "kworb_streams": kworb_row.get("Streams"),
+            "kworb_daily_streams": kworb_row.get("Daily [streams]"),}
 
-        if GET_ARTIST_STATS and primary_id:
-            a = get_artist(primary_id, token) or {}
-            rec["primary_artist_id"] = primary_id
-            rec["artist_followers"] = (a.get("followers") or {}).get("total")
-            rec["artist_popularity"] = a.get("popularity")
-            rec["artist_genres"] = ", ".join(a.get("genres", []) or [])
+        if get_artist_stats and primary_artist_id:
+            artist_data = get_artist(primary_artist_id, access_token) or {}
+            record["primary_artist_id"] = primary_artist_id
+            followers_info = artist_data.get("followers") or {}
+            record["artist_followers"] = followers_info.get("total")
+            record["artist_popularity"] = artist_data.get("popularity")
+            genres = artist_data.get("genres", []) or []
+            record["artist_genres"] = ", ".join(genres)
 
-        rows.append(rec)
+        all_rows.append(record)
 
-        if len(rows) % CHECKPOINT_EVERY == 0:
-            pd.DataFrame(rows).to_csv(out_csv, index=False)
-            print(f"Checkpoint: saved {len(rows)} rows → {out_csv}")
+        if len(all_rows) % checkpoint_every == 0:
+            pd.DataFrame(all_rows).to_csv(out_path, index=False)
+            print("Checkpoint: saved", len(all_rows), "rows →", out_path)
 
-        time.sleep(SLEEP_BETWEEN_CALLS)
+        time.sleep(sleep_between_calls)
 
-    pd.DataFrame(rows).to_csv(out_csv, index=False)
-    print(f"Done. Saved {len(rows)} rows → {out_csv}")
+    pd.DataFrame(all_rows).to_csv(out_path, index=False)
+    print("Done. Saved", len(all_rows), "rows →", out_path)
+
 
 if __name__ == "__main__":
     main()

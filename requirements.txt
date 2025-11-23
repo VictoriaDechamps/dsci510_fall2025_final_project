@@ -3,3 +3,6 @@ requests
 python-dotenv
 beautifulsoup4
 lxml
+kaggle
+matplotlib
+seaborn
