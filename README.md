@@ -64,8 +64,8 @@ Key findings include:
 2. These keys need to be saved in a .env file in the root directory of the project. See .env.example. 
 3. You will also need to place your Kaggle API credentials into your ~/.kaggle/ folder 
 
-Install dependences: pip install -r requirements.txt
-
 # Running analysis 
 
-Activate your virtual environment then run: python -m src.main
+Activate your virtual environment from the root directory.
+Install dependences: pip install -r requirements.txt
+Then run: python -m src.main
