@@ -1,5 +1,5 @@
-# What Makes a Song Popular?
-Analyzing audio features and music video performance.
+# Intro: What Makes a Song Popular?
+Analyzing audio features (such as Danceability, Acousticness, Liveness, etc) and music video performance to determine patterns in popular songs.
 
 # Data sources
 
@@ -8,7 +8,6 @@ Name / short description
 Source URL
 Type
 List of fields
-Have you tried to access/collect data with python? yes/no
 Estimated data size, number of data points you plan to use
 	
 
@@ -18,8 +17,7 @@ Name: Spotify most streamed songs of all time
 Source: https://kworb.net/spotify/songs.html 
 Type: Web page
 Fields: Song, total streams, daily streams
-Collected: Yes
-Size: 1000 out of 2500
+Size: 1000 collected out of 2500 available
 
 Dataset 2 - Spotify
 
@@ -27,8 +25,7 @@ Name: Spotify Web API
 Source: https://developer.spotify.com/ 
 Type: API
 Fields: Popularity, track name, artist, album, release date, explicitly flag, duration
-Collected: Yes
-Size: 1000 songs
+Size: 970 songs collected out of millions available
 	
 Dataset 3 - Kaggle
 
@@ -36,8 +33,7 @@ Name: Audio features and lyrics of spotify songs
 Source: https://www.kaggle.com/datasets/imuhammad/audio-features-and-lyrics-of-spotify-songs 
 Type: CSV
 Fields: Danceability, energy, tempo, valence, loudness, lyrics, genre
-Collected: Yes
-Size: ~180000
+Size: 546 collected out of ~180000 available
 
 
 Dataset 4 - Kaggle
@@ -45,10 +41,13 @@ Name: Most Viewed YouTube Music Videos
 Source: https://www.kaggle.com/datasets/asmonline/most-viewed-youtube-music-videos 
 Type: CSV
 Fields: Video, total views
-Collected: Yes
-Size: 2500
+Size: 357 collected out of 2500 available
 
-# Results 
+# Analysis
+
+The is a data analysis-based project, so my goal was to analyze correlational relationships between different song features and their connections to stream counts.
+
+# Summary of the Results 
 
 Key findings include: 
 - "Acousticness" (a Spotify audio metric) had the highest correlation with total streams
@@ -58,13 +57,12 @@ Key findings include:
 - Songs with a tempo of 120-125 bpm perform best, with a significant drop in performance for songs with tempo <90 bpm and > 130 bpm
 - Most common word in top 400 songs is 'love'
 
-# Installation
+# Installation & How to Run
 
 1. Create a Spotify developer account and register an app to obtain your client ID and client secret.
 2. These keys need to be saved in a .env file in the root directory of the project. See .env.example. 
 3. You will also need to place your Kaggle API credentials into your ~/.kaggle/ folder 
 
-# Running analysis 
 
 Activate your virtual environment from the root directory.
 Install dependences: pip install -r requirements.txt
